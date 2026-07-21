@@ -1,7 +1,7 @@
 // EC225 Cat A Helipad Max Takeoff Gross Weight - Service Worker
 // Caches the app for full offline use after first load
 
-const CACHE_NAME = 'ec225-ca-helipad-takeoff-v6';
+const CACHE_NAME = 'ec225-ca-helipad-takeoff-v7';
 const FILES_TO_CACHE = [
   './',
   './index.html'
