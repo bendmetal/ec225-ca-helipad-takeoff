@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="EC225 Helipad TO">
+<meta name="apple-mobile-web-app-title" content="Cat A TO Helipad">
 <meta name="theme-color" content="#0a0e14">
-<title>EC225 Max Takeoff Gross Weight</title>
+<title>EC225 Cat A Takeoff — Helipad</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -126,12 +126,32 @@
     padding: 8px 0;
   }
 
+  .handoff-wrap { margin-top: 14px; }
+  .handoff-btn {
+    width: 100%; padding: 12px 14px; border-radius: 8px; cursor: pointer;
+    background: rgba(88,166,255,0.10); border: 1px solid rgba(88,166,255,0.40);
+    color: #58a6ff; font-size: 13px; font-weight: 600; font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .handoff-btn:active { background: rgba(88,166,255,0.25); }
+  .handoff-done { display: none; margin-top: 8px; font-size: 11px; line-height: 1.5; }
+  .handoff-done.show { display: block; }
+
   .warning {
     margin-top: 14px; padding: 12px 14px;
     background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3);
     color: #fbbf24; font-size: 12px; border-radius: 8px;
     line-height: 1.5;
   }
+  /* ---- restored-inputs note ---- */
+  .sticky-note {
+    display: none; margin: 0 0 14px 0; padding: 9px 12px; border-radius: 6px;
+    background: rgba(125,133,144,0.10); border-left: 3px solid #58a6ff;
+    font-size: 11px; line-height: 1.5; color: #9ca3af;
+  }
+  .sticky-note.show { display: block; }
+  .sticky-note a { color: #58a6ff; text-decoration: none; font-weight: 600; }
+
   .info {
     margin-top: 14px; padding: 12px 14px;
     background: rgba(88, 166, 255, 0.06); border-left: 3px solid #58a6ff;
@@ -173,9 +193,11 @@
 <div class="app">
   <header>
     <div class="back-row"><a href="../" class="back-link" aria-label="Back to tool list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg><span class="back-word">Tools</span></a></div>
-    <h1>EC225 Max Takeoff Gross Weight</h1>
-    <div class="subtitle">Category A · Helipad · MPAI · Bullets Closed</div>
+    <h1>Cat A Takeoff — Helipad</h1>
+    <div class="subtitle">Max Takeoff Gross Weight · MPAI · Bullets Closed</div>
   </header>
+
+  <div class="sticky-note" id="sticky-note"></div>
 
   <div class="input-group">
     <div class="input-label">Pressure Altitude (ft)</div>
@@ -207,6 +229,11 @@
   </div>
 
   <div id="warning-box"></div>
+
+  <div class="handoff-wrap" id="handoff-wrap" style="display:none;">
+    <button class="handoff-btn" onclick="sendToFuelPlanner()">Use this weight in the Fuel Planner</button>
+    <div class="handoff-done" id="handoff-done"></div>
+  </div>
 
   <div class="info">
     <strong>Source:</strong> RFM Section 2.2.A1, Figure 2b (MAKILA 2A1), rev 11-50 &mdash; Category A Operation on Helipad, Maximum Takeoff Gross Weight / MPAI Bullets Closed / No P3 Air Bleed. Bilinear interpolation between chart points. Max weight 11,000 kg. Hσ = 11,000 ft density altitude.
@@ -323,6 +350,55 @@
     return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
 
+  // ===================================================================
+  // Cross-app handoff store
+  // -------------------------------------------------------------------
+  // All the tools are served from one origin (bendmetal.github.io), so
+  // localStorage is SHARED between them -- the folder path does not
+  // partition it. That lets this result travel to a fuel planner with no
+  // server involved.
+  // Rules that keep this safe for flight planning:
+  //   * the receiver never auto-fills; it offers, the pilot accepts
+  //   * the conditions the number came from travel with it
+  //   * anything older than MAX_AGE_MIN is not offered at all
+  // Wrapped in try/catch throughout: localStorage throws in some private
+  // browsing contexts, and a storage failure must never break a calculator.
+  // ===================================================================
+  const EC225_HANDOFF_KEY = 'ec225.handoff.maxgwt';
+
+  function ec225SaveHandoff(payload){
+    try {
+      payload.savedAt = Date.now();
+      localStorage.setItem(EC225_HANDOFF_KEY, JSON.stringify(payload));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // Remembers the most recent valid result so the button can send it.
+  let lastGoodResult = null;
+
+  function showHandoff(){
+    const w = document.getElementById('handoff-wrap');
+    if (w) w.style.display = '';
+  }
+  function hideHandoff(){
+    const w = document.getElementById('handoff-wrap');
+    const d = document.getElementById('handoff-done');
+    if (w) w.style.display = 'none';
+    if (d) d.classList.remove('show');
+  }
+
+  function sendToFuelPlanner(){
+    const doneEl = document.getElementById('handoff-done');
+    if (!lastGoodResult){ return; }
+    const ok = ec225SaveHandoff(lastGoodResult);
+    doneEl.innerHTML = ok
+      ? 'Saved. Open the Mission Fuel Planner or Route Fuel Planner &mdash; it will offer this weight for the CAT A/B Max Allowable GWT field.'
+      : 'Could not save on this device (storage unavailable). Note the number and enter it by hand.';
+    doneEl.style.color = ok ? '#4ade80' : '#fbbf24';
+    doneEl.classList.add('show');
+  }
+
   function compute() {
     const paEl = document.getElementById('pa');
     const oatEl = document.getElementById('oat');
@@ -334,14 +410,19 @@
     if (isNaN(pa) || isNaN(oat)) {
       weightsEl.innerHTML = '<div class="weight-block"><div class="weight-value">—</div><div class="weight-unit">lb</div></div><div class="weight-block"><div class="weight-value-kg">—</div><div class="weight-unit">kg</div></div>';
       warnEl.innerHTML = '';
+      lastGoodResult = null; hideHandoff();
       return;
     }
+
+    const doneEl0 = document.getElementById('handoff-done');
+    if (doneEl0) doneEl0.classList.remove('show');
 
     const result = lookup(pa, oat);
 
     if (result.note) {
       weightsEl.innerHTML = '<div class="error-value">' + result.note + '</div>';
       warnEl.innerHTML = '';
+      lastGoodResult = null; hideHandoff();
       return;
     }
 
@@ -349,6 +430,18 @@
     weightsEl.innerHTML =
       '<div class="weight-block"><div class="weight-value' + cappedClass + '">' + fmt(result.lb) + '</div><div class="weight-unit">lb</div></div>' +
       '<div class="weight-block"><div class="weight-value-kg">' + fmt(result.kg) + '</div><div class="weight-unit">kg</div></div>';
+
+    // Record this result so it can be handed to the fuel planners. The
+    // conditions string travels with it so the receiving app can show WHAT
+    // the number was computed at, not just the number.
+    lastGoodResult = {
+      kg: result.kg,
+      lb: result.lb,
+      category: 'A',
+      source: 'Cat A Takeoff \u2014 Helipad',
+      conditions: fmt(pa) + ' ft / ' + (oat >= 0 ? '+' : '') + oat + ' \u00b0C'
+    };
+    showHandoff();
 
     const warnings = [];
     if (result.capped) {
@@ -386,6 +479,131 @@
   }
 
   // Force-refresh: unregister service worker, clear caches, reload from network
+// ===================================================================
+// Remember the last inputs (per app)
+// -------------------------------------------------------------------
+// Greg's complaint: leave a tool and everything you typed is gone, so
+// moving between apps in one planning session means retyping PA and OAT
+// over and over.
+//
+// The safety problem with simply restoring them is obvious: a pilot opens
+// the app tomorrow, sees a number computed from yesterday's conditions, and
+// has no reason to doubt it. Three things prevent that:
+//   1. Restores expire. Anything older than 6 hours is discarded, not shown.
+//   2. The restore is never silent -- a note says the inputs came from a
+//      previous session and how long ago, with a one-tap Reset to defaults.
+//   3. Nothing is restored across devices or accounts; this is local only.
+// Storage is wrapped in try/catch throughout: localStorage throws in some
+// private-browsing contexts, and that must never break a calculator.
+// ===================================================================
+const EC225_INPUTS_KEY = 'ec225.inputs.ca-helipad-takeoff';
+const EC225_INPUTS_MAX_AGE_MIN = 360;
+const EC225_INPUTS_SKIP = ['ff-file','fpl-file'];
+let EC225_INPUT_DEFAULTS = null;
+let EC225_EXTRA_DEFAULTS = null;
+
+function ec225InputEls(){
+  let list = [];
+  try { list = Array.prototype.slice.call(document.querySelectorAll('input, select')); }
+  catch (e) { return []; }
+  return list.filter(function(e){
+    return e && e.id && e.type !== 'file' && EC225_INPUTS_SKIP.indexOf(e.id) === -1;
+  });
+}
+
+function ec225SnapshotInputs(){
+  const v = {};
+  ec225InputEls().forEach(function(e){
+    v[e.id] = (e.type === 'checkbox' || e.type === 'radio') ? !!e.checked : e.value;
+  });
+  return v;
+}
+
+function ec225ApplyInputs(v){
+  if (!v) return 0;
+  let n = 0;
+  ec225InputEls().forEach(function(e){
+    if (!(e.id in v)) return;
+    if (e.type === 'checkbox' || e.type === 'radio') e.checked = !!v[e.id];
+    else e.value = v[e.id];
+    n++;
+  });
+  return n;
+}
+
+function ec225SaveInputs(){
+  try {
+    localStorage.setItem(EC225_INPUTS_KEY, JSON.stringify({
+      savedAt: Date.now(), v: ec225SnapshotInputs(), x: ec225ExtraState()
+    }));
+  } catch (e) {}
+}
+
+function ec225ClearInputs(){
+  try { localStorage.removeItem(EC225_INPUTS_KEY); } catch (e) {}
+}
+
+function ec225StickyAge(min){
+  if (min < 1) return 'a moment ago';
+  if (min < 60) return Math.round(min) + ' min ago';
+  const h = min / 60;
+  if (h < 2) return 'about an hour ago';
+  return Math.round(h) + ' hours ago';
+}
+
+function ec225StickyNote(min){
+  const el = document.getElementById('sticky-note');
+  if (!el) return;
+  el.innerHTML = 'Showing the inputs you last used here, from ' + ec225StickyAge(min)
+    + '. <a href="javascript:void(0)" onclick="ec225ResetInputs()">Reset to defaults</a>';
+  el.classList.add('show');
+}
+
+function ec225ResetInputs(){
+  ec225ApplyInputs(EC225_INPUT_DEFAULTS);
+  ec225RestoreExtra(EC225_EXTRA_DEFAULTS);
+  ec225ClearInputs();
+  const el = document.getElementById('sticky-note');
+  if (el){ el.classList.remove('show'); el.innerHTML = ''; }
+  ec225Recompute();
+}
+
+function ec225InitSticky(){
+  // Capture the markup's own defaults FIRST, so Reset has something true to
+  // go back to even after a restore has overwritten the fields.
+  EC225_INPUT_DEFAULTS = ec225SnapshotInputs();
+  EC225_EXTRA_DEFAULTS = ec225ExtraState();
+
+  let d = null;
+  try {
+    const raw = localStorage.getItem(EC225_INPUTS_KEY);
+    if (raw) d = JSON.parse(raw);
+  } catch (e) { d = null; }
+
+  if (d && d.v && d.savedAt){
+    const mins = (Date.now() - d.savedAt) / 60000;
+    if (mins > EC225_INPUTS_MAX_AGE_MIN){
+      ec225ClearInputs();            // too old to be this session's planning
+    } else {
+      ec225ApplyInputs(d.v);
+      ec225RestoreExtra(d.x);
+      ec225StickyNote(mins);
+      ec225Recompute();
+    }
+  }
+
+  ec225InputEls().forEach(function(e){
+    if (!e.addEventListener) return;
+    e.addEventListener('input', ec225SaveInputs);
+    e.addEventListener('change', ec225SaveInputs);
+  });
+}
+
+function ec225ExtraState(){ return null; }
+function ec225RestoreExtra(){ }
+function ec225Recompute(){ compute(); }
+ec225InitSticky();
+
   async function forceRefresh() {
     try {
       if ('serviceWorker' in navigator) {
